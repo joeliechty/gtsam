@@ -145,7 +145,11 @@ Vector NonlinearInequalityConstraints::violationVector(const Values& values, boo
   size_t start_idx = 0;
   for (const auto& constraint : *this) {
     size_t dim = constraint->dim();
-    violation.middleCols(start_idx, dim) =
+    // `violation` is a column Vector; place each constraint's error at the
+    // right row offset with segment(). middleCols() selects *columns* (each
+    // spanning all rows), which is only in-bounds when dim==1 and silently
+    // writes out of bounds (heap corruption) for any multi-dim constraint.
+    violation.segment(start_idx, dim) =
         whiten ? constraint->whitenedError(values) : constraint->unwhitenedError(values);
     start_idx += dim;
   }
