@@ -19,6 +19,7 @@
 #include <gtsam/constrained/AugmentedLagrangianOptimizer.h>
 #include <gtsam/slam/AntiFactor.h>
 
+#include <algorithm>
 #include <iomanip>
 
 using std::setw, std::cout, std::endl, std::setprecision;
@@ -113,9 +114,19 @@ AugmentedLagrangianOptimizer::iterate(const State& state, const double muEq,
   const NonlinearFactorGraph augmentedLagrangian =
       augmentedLagrangianFunction(newState);
 
+  // Inexact inner solves: loosen the inner LM tolerance while mu is small
+  // (the merit function will change substantially next outer iteration), and
+  // tighten it as 1/mu toward lm_params.relativeErrorTol as mu grows.
+  double relTolOverride = -1.0;
+  if (p_->innerRelTolInitial > 0.0 && muEq > 0.0) {
+    relTolOverride =
+        std::max(p_->lm_params.relativeErrorTol,
+                 p_->innerRelTolInitial * std::min(1.0, p_->initialMuEq / muEq));
+  }
+
   // Run unconstrained optimization.
-  auto optimizer =
-      createUnconstrainedOptimizer(augmentedLagrangian, state.values);
+  auto optimizer = createUnconstrainedOptimizer(augmentedLagrangian,
+                                                state.values, relTolOverride);
   newState.setValues(optimizer->optimize(), problem_);
   newState.unconstrainedIterationss = optimizer->iterations();
 
@@ -236,8 +247,15 @@ std::pair<double, double> AugmentedLagrangianOptimizer::updatePenaltyParameter(
 /* ************************************************************************* */
 ConstrainedOptimizer::SharedOptimizer
 AugmentedLagrangianOptimizer::createUnconstrainedOptimizer(
-    const NonlinearFactorGraph& graph, const Values& values) const {
+    const NonlinearFactorGraph& graph, const Values& values,
+    const double relTolOverride) const {
   // TODO(yetong): make compatible with all NonlinearOptimizers.
+  if (relTolOverride > 0.0) {
+    LevenbergMarquardtParams lm_params = p_->lm_params;
+    lm_params.relativeErrorTol = relTolOverride;
+    return std::make_shared<LevenbergMarquardtOptimizer>(graph, values,
+                                                         lm_params);
+  }
   return std::make_shared<LevenbergMarquardtOptimizer>(graph, values,
                                                        p_->lm_params);
 }

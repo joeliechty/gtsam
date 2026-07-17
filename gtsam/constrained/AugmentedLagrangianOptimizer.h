@@ -36,6 +36,15 @@ class GTSAM_EXPORT AugmentedLagrangianParams : public PenaltyOptimizerParams {
   double dualStepSizeFactorIneq = 1.0;
   double muIncreaseThreshold = 0.25;
 
+  // Inexact inner solves. When > 0, the inner unconstrained LM's
+  // relativeErrorTol starts at innerRelTolInitial on the first outer iteration
+  // and tightens proportionally to initialMuEq / muEq as the penalty weight
+  // grows, never dropping below lm_params.relativeErrorTol. Early outer
+  // iterations only need a rough minimizer of a merit function that is about
+  // to change anyway; solving them to full precision wastes inner iterations.
+  // <= 0 (default) disables the schedule and uses lm_params unchanged.
+  double innerRelTolInitial = 0.0;
+
   using Base::Base;
 };
 
@@ -139,8 +148,11 @@ class GTSAM_EXPORT AugmentedLagrangianOptimizer : public ConstrainedOptimizer {
 
  protected:
   /// Create an unconstrained optimizer that solves the augmented Lagrangian.
+  /// relTolOverride > 0 replaces lm_params.relativeErrorTol for this solve
+  /// (used by the inexact inner-solve schedule, see innerRelTolInitial).
   SharedOptimizer createUnconstrainedOptimizer(
-      const NonlinearFactorGraph& graph, const Values& values) const;
+      const NonlinearFactorGraph& graph, const Values& values,
+      const double relTolOverride = -1.0) const;
 
   /** Update the Lagrange multipliers using dual ascent. */
   void updateLagrangeMultiplier(const State& prev_state, State* state) const;
